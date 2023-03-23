@@ -1,5 +1,5 @@
 from mrjob.job import MRJob
-from mrjob.protocol import RawValueProtocol, JSONProtocol
+from mrjob.protocol import RawValueProtocol
 
 class JsonToCsv(MRJob):
     OUTPUT_PROTOCOL = RawValueProtocol
