@@ -4,9 +4,9 @@
 from pyspark.sql import SparkSession 
 import pyspark.sql.functions as F
 from pyspark.sql.types import *
+    
 
-
-spark = (SparkSession.builder.appName("shopping").getOrCreate())
+spark = (SparkSession.builder.appName("shopping").master("spark://namenode:7077").getOrCreate())
 
 
 review_schema = StructType([StructField("review_id", StringType(), False),
@@ -40,8 +40,10 @@ business_schema = StructType([
 business_df = spark.read.csv("hdfs://namenode:9000/project_data/business.csv", sep = '|', header = False, schema = business_schema)
 
 # DONT RUN THIS CODE
-# review_df.write.parquet("hdfs://namenode:9000/project_data/data/reviews")
-# business_df.write.parquet("hdfs://namenode:9000/project_data/data/business")
+review_df.write.parquet("hdfs://namenode:9000/project_data/data/reviews")
+business_df.write.parquet("hdfs://namenode:9000/project_data/data/business")
+
+# Read it like this:
 # business=spark.read.parquet('hdfs://namenode:9000/project_data/data/business/')
 
 
