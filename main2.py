@@ -15,13 +15,13 @@ from sparknlp.base import *
 from sparknlp.annotator import *
 from sparknlp.pretrained import PretrainedPipeline
 
-builder = SparkSession.builder.appName("Sentiment Analysis - instance - cores - 8,6") \
+builder = SparkSession.builder.appName("Sentiment Analysis - cores - 12 - shuffle buffer = 512k") \
     .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
     .config("spark.executor.memory", "6g") \
-    .config("spark.executor.instances", 8) \
-    .config("spark.executor.cores", 6) \
+    .config("spark.executor.cores", 4   ) \
     .config("spark.jars.packages", "com.johnsnowlabs.nlp:spark-nlp_2.12:4.4.0")\
     .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")\
+    .config("spark.shuffle.file.buffer", "512k")\
     .master("spark://namenode:7077")\
     #.config("spark.executor.instances", "1")\
     #.config("spark.executor.cores", "2")
@@ -111,6 +111,7 @@ result = result.withColumn("right_prediction",
                    F.when(((F.array_contains(F.col("final_sentiment"),"positive")) & (F.col("stars").isin(["5.0", "4.0", "3.0"]))) |
                         ((F.array_contains(F.col("final_sentiment"),"negative")) & (F.col("stars").isin(["3.0", "2.0", "1.0"]))), 
                         1).otherwise(0))
+result.persist()
 
 count_ones = result.agg(F.sum("right_prediction")).collect()[0][0]
 

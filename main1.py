@@ -10,19 +10,24 @@ from pyspark.sql.types import *
 from delta import *
 
 # Import Spark NLP
+# import sys
 import sparknlp
 from sparknlp.base import *
 from sparknlp.annotator import *
 from sparknlp.pretrained import PretrainedPipeline
 
-builder = SparkSession.builder.appName("Sentiment Analysis - instance - cores - 8,6") \
+builder = SparkSession.builder.appName("Sentiment Analysis - instance - cores -> 4 - cache-> memory - partitions -> 250") \
     .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
     .config("spark.executor.memory", "6g") \
-    .config("spark.executor.instances", 8) \
-    .config("spark.executor.cores", 6) \
     .config("spark.jars.packages", "com.johnsnowlabs.nlp:spark-nlp_2.12:4.4.0")\
     .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")\
     .master("spark://namenode:7077")\
+    .config("spark.executor.cores", 4) \
+    .config("spark.sql.shuffle.partitions", 250) \
+    
+    # .config("spark.executor.instances", 10) \
+    
+    
     #.config("spark.executor.instances", "1")\
     #.config("spark.executor.cores", "2")
 
@@ -112,11 +117,14 @@ result = result.withColumn("right_prediction",
                         ((F.array_contains(F.col("final_sentiment"),"negative")) & (F.col("stars").isin(["3.0", "2.0", "1.0"]))), 
                         1).otherwise(0))
 
+result.persist()
+
 count_ones = result.agg(F.sum("right_prediction")).collect()[0][0]
 
 total_count = result.count()
 
 print(f"Prediction accuracy for sentiment: {count_ones/total_count}")
+#result.unpersist()
 
 # TODO: Change it in a way similar to below so only new data will be inserted
 result.write.format("delta").mode("overwrite").save("/temp/sentiment_predicted_restaurant_reviews")
