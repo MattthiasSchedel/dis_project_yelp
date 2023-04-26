@@ -16,15 +16,15 @@ from sparknlp.base import *
 from sparknlp.annotator import *
 from sparknlp.pretrained import PretrainedPipeline
 
-builder = SparkSession.builder.appName("Sentiment Analysis - instance - cores -> 4 - cache-> memory - jvmSerializer - without upsert ") \
+builder = SparkSession.builder.appName("Sentiment Analysis - instance - cores -> 4 - cache-> memory - KryoSerializer = correct code") \
     .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
     .config("spark.executor.memory", "6g") \
     .config("spark.jars.packages", "com.johnsnowlabs.nlp:spark-nlp_2.12:4.4.0")\
     .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")\
     .master("spark://namenode:7077")\
     .config("spark.executor.cores", 4) \
-    # .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")\
-    
+    .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")\
+    #.config("spark.sql.shuffle.partitions", 250) \
     
     # .config("spark.executor.instances", 10) \
     
@@ -50,7 +50,6 @@ review_schema = StructType([StructField("review_id", StringType(), False),
       StructField("date", StringType(), False),])
 review_df = spark.read.csv("hdfs://namenode:9000/project_data/review.csv", sep = '|', header = False, schema = review_schema)
 review_df.createOrReplaceTempView("reviews")
-review_df.persist()
 
 #review_df.show()
 
@@ -73,19 +72,21 @@ business_schema = StructType([
     StructField("hours", StringType(), True)
 ])
 business_df = spark.read.csv("hdfs://namenode:9000/project_data/business.csv", sep = '|', header = False, schema = business_schema)
-business_df.createOrReplaceTempView("business")
-business_df.persist()
+#business_df.createOrReplaceTempView("business")
 
+# first filter then combine
+
+# Filter for only restaurant reviews
+spark.sparkContext.setJobDescription('filter reviews')
+business_df = business_df.where(F.col('categories').contains("Restaurants"))
+business_df.createOrReplaceTempView("business")
 
 
 # Combine data on common restaurant id
 spark.sparkContext.setJobDescription('combine datasets')
-reviews_with_category = spark.sql("SELECT r.review_id, b.business_id, r.text, r.date, b.categories, r.stars FROM reviews AS r LEFT JOIN business AS b ON b.business_id = r.business_id ")
+restaurant_reviews = spark.sql("SELECT r.review_id, b.business_id, r.text, r.date, b.categories, r.stars FROM reviews AS r LEFT JOIN business AS b ON b.business_id = r.business_id ")
 
-# Filter for only restaurant reviews
-spark.sparkContext.setJobDescription('filter reviews')
-restaurant_reviews = reviews_with_category.where(F.col('categories').contains("Restaurants"))
-restaurant_reviews.show()
+#restaurant_reviews.show()
 
 spark.sparkContext.setJobDescription('pipeline builder')
 # Build a pipeline
@@ -135,21 +136,53 @@ result = result.withColumn("right_prediction",
 result.persist()
 
 spark.sparkContext.setJobDescription('count right ones')
+#### TO-DO --- try to optomise below line.
 count_ones = result.agg(F.sum("right_prediction")).collect()[0][0]
 
 total_count = result.count()
+print("count ones", count_ones)
 
 print(f"Prediction accuracy for sentiment: {count_ones/total_count}")
 #result.unpersist()
 
+spark.sparkContext.setJobDescription('read predicted reviews')
+# delta_table_path = "/temp/sentiment_predicted_restaurant_reviews"
+delta_table_path = "/temp/sentiment_predicted_restaurant_reviews"
 spark.sparkContext.setJobDescription('write to disk')
-# TODO: Change it in a way similar to below so only new data will be inserted
-result.write.format("delta").mode("overwrite").save("/temp/sentiment_predicted_restaurant_reviews")
-
-# delta_table = DeltaTable.forPath(spark, "/temp/sentiment_predicted_restaurant_reviews")
-# delta_table.drop()
-# delta_table.alias("old_data") \
-#     .merge(result.alias("new_data"), "old_data.id = new_data.id") \
-#     .whenMatchedUpdateAll() \
-#     .whenNotMatchedInsertAll() \
-#     .execute()
+# Check if the Delta table exists
+if DeltaTable.isDeltaTable(spark, delta_table_path):
+    print("Updating delta")
+    # If the Delta table exists, load it into a DataFrame
+    deltaTableAnalyzedReviews = DeltaTable.forPath(spark, delta_table_path)
+    deltaTableAnalyzedReviews.alias('old') \
+        .merge(
+        result.alias('updates'),
+        'old.review_id = updates.review_id'
+  ) \
+  .whenMatchedUpdate(set =
+    {
+      "review_id": "updates.review_id",
+      "business_id": "updates.business_id",
+      "text": "updates.text",
+      "date": "updates.date",
+      "categories": "updates.categories",
+      "final_sentiment": "updates.final_sentiment",
+    }
+  ) \
+  .whenNotMatchedInsert(values =
+    {
+      "review_id": "updates.review_id",
+      "business_id": "updates.business_id",
+      "text": "updates.text",
+      "date": "updates.date",
+      "categories": "updates.categories",
+      "final_sentiment": "updates.final_sentiment",
+    }
+  ) \
+  .execute()
+else:
+    # If the Delta table does not exist, create it
+    print("Creating delta")
+    deltaTableAnalyzedReviews = result.write.format('delta').mode('overwrite').save(delta_table_path)
+    deltaTableAnalyzedReviews = DeltaTable.forPath(spark, delta_table_path)
+print("Finished!")

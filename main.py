@@ -15,7 +15,7 @@ from sparknlp.base import *
 from sparknlp.annotator import *
 from sparknlp.pretrained import PretrainedPipeline
 
-builder = SparkSession.builder.appName("Sentiment Analysis - instance - cores - 8,6") \
+builder = SparkSession.builder.appName("Sentiment Analysis - instance - cores - 8,6 - presentation_df_a") \
     .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
     .config("spark.executor.memory", "6g") \
     .config("spark.executor.instances", 8) \
@@ -42,7 +42,8 @@ review_schema = StructType([StructField("review_id", StringType(), False),
       StructField("cool", IntegerType(), False),
       StructField("text", StringType(), False),
       StructField("date", StringType(), False),])
-review_df = spark.read.csv("hdfs://namenode:9000/project_data/review.csv", sep = '|', header = False, schema = review_schema)
+# review_df = spark.read.csv("hdfs://namenode:9000/project_data/review.csv", sep = '|', header = False, schema = review_schema)
+review_df = spark.read.csv("hdfs://namenode:9000/project_data/review_small_b.csv", sep = '|', header = False, schema = review_schema)
 review_df.createOrReplaceTempView("reviews")
 
 #review_df.show()
@@ -118,13 +119,44 @@ total_count = result.count()
 
 print(f"Prediction accuracy for sentiment: {count_ones/total_count}")
 
-# TODO: Change it in a way similar to below so only new data will be inserted
-result.write.format("delta").mode("overwrite").save("/temp/sentiment_predicted_restaurant_reviews")
+#result.write.format("delta").mode("overwrite").save("/temp/sentiment_predicted_restaurant_reviews")
 
-# delta_table = DeltaTable.forPath(spark, "/temp/sentiment_predicted_restaurant_reviews")
-# delta_table.drop()
-# delta_table.alias("old_data") \
-#     .merge(result.alias("new_data"), "old_data.id = new_data.id") \
-#     .whenMatchedUpdateAll() \
-#     .whenNotMatchedInsertAll() \
-#     .execute()
+# delta_table_path = "/temp/sentiment_predicted_restaurant_reviews"
+delta_table_path = "/temp/sentiment_predicted_restaurant_reviews_presentation"
+# Check if the Delta table exists
+if DeltaTable.isDeltaTable(spark, delta_table_path):
+    print("Updating delta")
+    # If the Delta table exists, load it into a DataFrame
+    deltaTableAnalyzedReviews = DeltaTable.forPath(spark, delta_table_path)
+    deltaTableAnalyzedReviews.alias('old') \
+        .merge(
+        result.alias('updates'),
+        'old.review_id = updates.review_id'
+  ) \
+  .whenMatchedUpdate(set =
+    {
+      "review_id": "updates.review_id",
+      "business_id": "updates.business_id",
+      "text": "updates.text",
+      "date": "updates.date",
+      "categories": "updates.categories",
+      "final_sentiment": "updates.final_sentiment",
+    }
+  ) \
+  .whenNotMatchedInsert(values =
+    {
+      "review_id": "updates.review_id",
+      "business_id": "updates.business_id",
+      "text": "updates.text",
+      "date": "updates.date",
+      "categories": "updates.categories",
+      "final_sentiment": "updates.final_sentiment",
+    }
+  ) \
+  .execute()
+else:
+    # If the Delta table does not exist, create it
+    print("Creating delta")
+    deltaTableAnalyzedReviews = result.write.format('delta').mode('overwrite').save(delta_table_path)
+    deltaTableAnalyzedReviews = DeltaTable.forPath(spark, delta_table_path)
+print("Finished!")
