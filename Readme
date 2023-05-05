@@ -1,0 +1,16 @@
+This File should explain which code was used where. 
+
+Our development process usually involved trying small sections in jupyter notebooks and then turning them into a finished python script. 
+We ended up with 5 main.py files which each serve as a different variation of our main application. 
+
+main.py: has no optimizations and is our baseline app.
+main1.py: introduced an optimization which caches the result of the nlp pipeline. This prevents the pipeline from executing twice. Because the upsert algorithm takes a very long time for our 5M rows, it was excluded so we could focus on optimizing the rest of the application.
+main2.py: was just used to test buffer sizes.
+main3.py: was made to test an optimization where the business dataset is filtered before merging with the reviews to hopefully decrease execution time. (line 71 - 78)
+main4.py: was made to test KryoSerializer and also different cluster configurations.
+
+presentation.ipynb was created to demonstrate our code during our presentation. We prepared 2 small datasets with overlap called review_small_a.csv and review_small_b.csv to demonstrate our presentation.
+
+json_to_csv.py is our MapReduce job and was developed at the beginning of the course. Later it was updated to be more "complicated" since just calling eval(line) on a line was not enough.
+
+All files in "Development Files" were used to develop the code. Some include unused tests for example train_mlmodel_test.ipynb was a test to trian our own model using the stars as label.

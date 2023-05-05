@@ -15,17 +15,12 @@ from sparknlp.base import *
 from sparknlp.annotator import *
 from sparknlp.pretrained import PretrainedPipeline
 
-builder = SparkSession.builder.appName("Sentiment Analysis - instance - cores - 8,6 - presentation_df_a") \
+builder = SparkSession.builder.appName("Sentiment Analysis") \
     .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
     .config("spark.executor.memory", "6g") \
-    .config("spark.executor.instances", 8) \
-    .config("spark.executor.cores", 6) \
     .config("spark.jars.packages", "com.johnsnowlabs.nlp:spark-nlp_2.12:4.4.0")\
     .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")\
     .master("spark://namenode:7077")\
-    #.config("spark.executor.instances", "1")\
-    #.config("spark.executor.cores", "2")
-
     
 spark = configure_spark_with_delta_pip(builder).getOrCreate()
 
@@ -141,6 +136,7 @@ if DeltaTable.isDeltaTable(spark, delta_table_path):
       "date": "updates.date",
       "categories": "updates.categories",
       "final_sentiment": "updates.final_sentiment",
+      "right_prediction": "updates.right_prediction"
     }
   ) \
   .whenNotMatchedInsert(values =
@@ -151,6 +147,7 @@ if DeltaTable.isDeltaTable(spark, delta_table_path):
       "date": "updates.date",
       "categories": "updates.categories",
       "final_sentiment": "updates.final_sentiment",
+      "right_prediction": "updates.right_prediction"
     }
   ) \
   .execute()

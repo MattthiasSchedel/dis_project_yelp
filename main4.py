@@ -86,7 +86,7 @@ business_df.createOrReplaceTempView("business")
 spark.sparkContext.setJobDescription('combine datasets')
 restaurant_reviews = spark.sql("SELECT r.review_id, b.business_id, r.text, r.date, b.categories, r.stars FROM reviews AS r LEFT JOIN business AS b ON b.business_id = r.business_id ")
 
-#restaurant_reviews.show()
+print("count of rows",restaurant_reviews.count())
 
 spark.sparkContext.setJobDescription('pipeline builder')
 # Build a pipeline
@@ -134,7 +134,7 @@ result = result.withColumn("right_prediction",
                         1).otherwise(0))
 
 result.persist()
-
+print("saved to the memory")
 spark.sparkContext.setJobDescription('count right ones')
 #### TO-DO --- try to optomise below line.
 count_ones = result.agg(F.sum("right_prediction")).collect()[0][0]
